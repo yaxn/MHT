@@ -25,17 +25,10 @@ touch = touch $@
 libmht.a: apqueue.o assign.o \
 	  except.o \
 	  links.o list.o \
-	  matrix.o mdlmht.o \
-	  mht.o mht_group.o \
+	  matrix.o mht_group.o \
 	  mht_report.o mht_track.o tree.o
 	  $(AR) $(ARFLAGS) libmht.a $?
 	  @echo lib is now up-to-date
-
-mdlmht.o: mdlmht.h mht.h except.h safeglobal.h list.h tree.h links.h vector.h corner.h mdlmht.c
-	$(C++) -c $(C++FLAGS) mdlmht.c
-
-mht.o: mht.h safeglobal.h list.h tree.h links.h vector.h except.h corner.h mht.c
-	$(C++) -c $(C++FLAGS) mht.c
 
 mht_group.o: mht.h pqueue.h apqueue.h safeglobal.h list.h tree.h \
 	links.h vector.h assign.h  except.h mht_group.c
