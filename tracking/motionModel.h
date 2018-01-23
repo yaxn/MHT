@@ -126,6 +126,7 @@ class CONSTCURV_STATE;
 class CONSTCURV_MDL;
 class CORNER_TRACK_MHT;
 
+typedef CORNERLIST<CORNERXY> CORNERLISTXY;
 
 /*-------------------------------------------------------------------*
  *
@@ -662,7 +663,7 @@ protected:
  *
  *-------------------------------------------------------------------*/
 
-class CORNER_TRACK_MHT: public MDL_MHT
+class CORNER_TRACK_MHT: public MDL_MHT<CORNERXY>
 {
 public:
 
@@ -692,7 +693,7 @@ private:
 
 protected:
 
-    virtual void measure(const std::list<CORNER> &newReports);
+    virtual void measure(const std::list<CORNERXY> &newReports);
 
     virtual void startTrack( int trackId, int,
                              MDL_STATE *state, MDL_REPORT *report )

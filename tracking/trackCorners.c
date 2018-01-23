@@ -23,7 +23,7 @@
 //int g_isFirstScan=1;
 //iDLIST_OF< FALARM > *g_falarms_ptr;   // list of false alarms found
 //iDLIST_OF< CORNER_TRACK > *g_cornerTracks_ptr; // list of cornerTracks found
-//CORNERLIST *g_currentCornerList;
+//CORNERLISTXY *g_currentCornerList;
 int g_time;
 
 void PrintSyntax()
@@ -65,10 +65,10 @@ int main(int argc, char **argv)
                               const Parameter &param,
                               const std::list< CORNER_TRACK > &cornerTracks,
                               const std::list< FALARM > &falarms);
-    std::list<CORNERLIST> readCorners(const std::string &inputFileName,
+    std::list<CORNERLISTXY> readCorners(const std::string &inputFileName,
 				      const std::string &dirName);
 
-    std::list<CORNERLIST> inputData;
+    std::list<CORNERLISTXY> inputData;
     ptrDLIST_OF<MODEL> mdl;
 
     std::string outputFileName = "";
@@ -225,7 +225,7 @@ int main(int argc, char **argv)
      *  1st frame
      */
 
-    //std::list<CORNERLIST>::iterator cornerListIter = inputData.begin();
+    //std::list<CORNERLISTXY>::iterator cornerListIter = inputData.begin();
     //g_currentCornerList = cornerPtr.get();
 
 
@@ -239,7 +239,7 @@ int main(int argc, char **argv)
     std::cout << "About to scan...\n";
 
     int didIscan=0;
-    for ( std::list<CORNERLIST>::iterator cornerListIter = inputData.begin();
+    for ( std::list<CORNERLISTXY>::iterator cornerListIter = inputData.begin();
           cornerListIter != inputData.end();
           cornerListIter++ )
     {
@@ -589,13 +589,13 @@ void writeCornerTrackFile(const std::string &name, const Parameter &param,
  *------------------------------------------------------------------*/
 
 
-std::list<CORNERLIST> readCorners(const std::string &inputFileName, const std::string &dirName)
+std::list<CORNERLISTXY> readCorners(const std::string &inputFileName, const std::string &dirName)
 // TODO: Make this platform-independent by dynamically choosing the correct path separator.
 //       Right now, it assumes Unix-based paths
 // NOTE: Supposedly, using forward-slashes should work for Windows.
 //       I don't have a Windows machine to test this, though.
 {
-    std::list<CORNERLIST> inputData;
+    std::list<CORNERLISTXY> inputData;
     std::vector<int> ncorners(0);
 
     std::string str;
@@ -637,7 +637,7 @@ std::list<CORNERLIST> readCorners(const std::string &inputFileName, const std::s
         controlFile >> npoints;
         ncorners.push_back(npoints);
         std::cout << "ncorners[" << frameIndex << "]=" << ncorners[frameIndex] << std::endl;
-        inputData.push_back(CORNERLIST(npoints, timeDelta));
+        inputData.push_back(CORNERLISTXY(npoints, timeDelta));
     }
 
     controlFile.close();
@@ -648,7 +648,7 @@ std::list<CORNERLIST> readCorners(const std::string &inputFileName, const std::s
      * the data in inputData
      */
     int i = startFrame;
-    for (std::list<CORNERLIST>::iterator aCornerList = inputData.begin();
+    for (std::list<CORNERLISTXY>::iterator aCornerList = inputData.begin();
          aCornerList != inputData.end();
          aCornerList++)
     {
@@ -675,7 +675,7 @@ std::list<CORNERLIST> readCorners(const std::string &inputFileName, const std::s
                    &x,&y,&i1,&i2,&i3,&i4,&i5,&i6,&i7,&i8, &i9, &i10, &i11, &i12, &i13, &i14,
                    &i15,&i16, &i17, &i18, &i19, &i20, &i21, &i22, &i23, &i24, &i25, &cornerID );
 
-            aCornerList->list.push_back(CORNER(x,y, Texture_t(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,i11,i12,i13,i14,i15,i16,i17,i18,i19,i20,i21,i22,i23,i24,i25),i-1,cornerID));
+            aCornerList->list.push_back(CORNERXY(x,y, Texture_t(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,i11,i12,i13,i14,i15,i16,i17,i18,i19,i20,i21,i22,i23,i24,i25),i-1,cornerID));
             j++;
 //            cornerID++;
         }

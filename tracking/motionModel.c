@@ -127,9 +127,9 @@ void CORNER_TRACK_MHT::verify( int trackId, double r_x, double r_y, double s_x, 
  * them as reports
  *-------------------------------------------------------------------*/
 
-void CORNER_TRACK_MHT::measure(const std::list<CORNER> &newReports)
+void CORNER_TRACK_MHT::measure(const std::list<CORNERXY> &newReports)
 {
-    for (std::list<CORNER>::const_iterator cornerPtr = newReports.begin();
+    for (std::list<CORNERXY>::const_iterator cornerPtr = newReports.begin();
          cornerPtr != newReports.end();
          cornerPtr++)
     {
@@ -672,7 +672,7 @@ void CORNER_TRACK_MHT::describe(int spaces)
         }
 
         std::cout << std::endl;
-        (**(*tTreePtr).getTree()).describeTree( spaces + 2 );
+        //(**(*tTreePtr).getTree()).describeTree( spaces + 2 );
     }
 }
 
