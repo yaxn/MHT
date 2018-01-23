@@ -408,17 +408,17 @@
  *-------------------------------------------------------------------*/
 
 class MODEL;
-class MDL_MHT;
+template<class> class MDL_MHT;
 class MDL_STATE;
 class MDL_REPORT;
-class MDL_T_HYPO;
-class MDL_ROOT_T_HYPO;
-class MDL_FALARM_T_HYPO;
-class MDL_DUMMY_T_HYPO;
-class MDL_START_T_HYPO;
-class MDL_CONTINUE_T_HYPO;
-class MDL_SKIP_T_HYPO;
-class MDL_END_T_HYPO;
+template<class> class MDL_T_HYPO;
+template<class> class MDL_ROOT_T_HYPO;
+template<class> class MDL_FALARM_T_HYPO;
+template<class> class MDL_DUMMY_T_HYPO;
+template<class> class MDL_START_T_HYPO;
+template<class> class MDL_CONTINUE_T_HYPO;
+template<class> class MDL_SKIP_T_HYPO;
+template<class> class MDL_END_T_HYPO;
 
 /*-------------------------------------------------------------------*
  | MODEL -- base class for target behavior models
@@ -465,14 +465,14 @@ public:
 
 class MDL_STATE
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    //friend class MDL_MHT;
+    //friend class MDL_ROOT_T_HYPO;
+    //friend class MDL_FALARM_T_HYPO;
+    //friend class MDL_DUMMY_T_HYPO<CORNER>;
+    template<class> friend class MDL_CONTINUE_T_HYPO;
+    //friend class MDL_START_T_HYPO;
+    //friend class MDL_SKIP_T_HYPO;
+    //friend class MDL_END_T_HYPO;
 
 private:
 
@@ -524,15 +524,16 @@ public:
  | MDL_MHT -- model-based MHT class
  *-------------------------------------------------------------------*/
 
-class MDL_MHT: public MHT
+template<class CORNER>
+class MDL_MHT: public MHT<CORNER>
 {
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
@@ -541,7 +542,7 @@ protected:
 public:
 
     MDL_MHT( int maxDepth, double minGHypoRatio, int maxGHypos ):
-        MHT( maxDepth, minGHypoRatio, maxGHypos ),
+        MHT<CORNER>( maxDepth, minGHypoRatio, maxGHypos ),
         m_modelList()
     {
     }
@@ -550,8 +551,52 @@ public:
 
 protected:
 
-    virtual void measure(const std::list<CORNER> &newReports) {}
-    virtual void measureAndValidate(const std::list<CORNER> &newReports);
+    virtual void measure(const std::list<CORNER> &/*newReports*/,
+                         const double &/*deltaT*/) {}
+
+    /*-------------------------------------------------------------------*
+     | MDL_MHT::measureAndValidate() -- collect reports of measurements
+     |                                  and grow track trees
+     *-------------------------------------------------------------------*/
+    virtual void measureAndValidate(const std::list<CORNER> &newReports, const double &deltaT)
+    {
+
+
+        PTR_INTO_ptrDLIST_OF< T_HYPO > tHypoPtr;
+        MDL_T_HYPO<CORNER> *tHypo;
+        PTR_INTO_iDLIST_OF< REPORT > reportPtr;
+        MDL_REPORT *report;
+        MDL_ROOT_T_HYPO<CORNER> *root;
+
+        /* get reports of measurements */
+        measure(newReports, deltaT);
+
+        /* loop through all the active track hypotheses (leaves of the track
+       trees), making children for each one */
+        LOOP_DLIST( tHypoPtr, this->m_activeTHypoList )
+        {
+            tHypo = (MDL_T_HYPO<CORNER> *)tHypoPtr.get();
+
+            tHypo->makeDefaultChildren();
+
+            LOOP_DLIST( reportPtr, this->m_newReportList )
+            {
+                report = (MDL_REPORT *)reportPtr.get();
+                tHypo->makeChildrenFor( report );
+            }
+        }
+
+        /* make a new track tree for each reported measurement */
+        LOOP_DLIST( reportPtr, this->m_newReportList )
+        {
+            report = (MDL_REPORT *)reportPtr.get();
+
+            root = new MDL_ROOT_T_HYPO<CORNER>( this );
+            this->installTree( root, -1 );
+            root->makeDefaultChildren();
+            root->makeChildrenFor( report );
+        }
+    }
 
     virtual void startTrack( int, int,
                              MDL_STATE *, MDL_REPORT * )
@@ -597,19 +642,20 @@ protected:
  |      MDL_SKIP_T_HYPO
  *-------------------------------------------------------------------*/
 
+template<class CORNER>
 class MDL_T_HYPO: public T_HYPO
 {
-    friend class MDL_MHT;
+    friend class MDL_MHT<CORNER>;
 
 protected:
 
-    MDL_MHT *m_mdlMht;                   // MDL_MHT object that this
+    MDL_MHT<CORNER> *m_mdlMht;           // MDL_MHT object that this
                                          //   tree is part of
 
 protected:
 
-    MDL_T_HYPO( MDL_MHT *mdlMht ): T_HYPO(), m_mdlMht( mdlMht ) {}
-    MDL_T_HYPO( MDL_MHT *mdlMht, MDL_REPORT *report ):
+    MDL_T_HYPO( MDL_MHT<CORNER> *mdlMht ): T_HYPO(), m_mdlMht( mdlMht ) {}
+    MDL_T_HYPO( MDL_MHT<CORNER> *mdlMht, MDL_REPORT *report ):
         T_HYPO( report ),
         m_mdlMht( mdlMht )
     {
@@ -628,99 +674,165 @@ public:
     }
 };
 
-class MDL_ROOT_T_HYPO: public MDL_T_HYPO
+template<class CORNER>
+class MDL_ROOT_T_HYPO: public MDL_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_ROOT_T_HYPO( MDL_MHT *mdlMht ):
-        MDL_T_HYPO( mdlMht )
+    MDL_ROOT_T_HYPO( MDL_MHT<CORNER> *mdlMht ):
+        MDL_T_HYPO<CORNER>( mdlMht )
     {
-        m_endsTrack = 0;
-        m_mustVerify = 0;
-        m_logLikelihood = 0;
+        this->m_endsTrack = 0;
+        this->m_mustVerify = 0;
+        this->m_logLikelihood = 0;
     }
 
-    virtual void makeDefaultChildren();
-    virtual void makeChildrenFor( MDL_REPORT *report );
+    /*-------------------------------------------------------------------*
+     | MDL_ROOT_T_HYPO::makeDefaultChildren() -- make the default
+     |                                           children of a ROOT node
+     |
+     | This makes the children that are not linked to a report.
+     *-------------------------------------------------------------------*/
+    virtual void makeDefaultChildren()
+    {
+        this->installChild( new MDL_DUMMY_T_HYPO<CORNER>( this->m_mdlMht ) );
+    }
+
+    /*-------------------------------------------------------------------*
+     | MDL_ROOT_T_HYPO::makeChildrenFor() -- make children of a ROOT node
+     |
+     | This makes the children that ARE linked to a report.
+     *-------------------------------------------------------------------*/
+    virtual void makeChildrenFor( MDL_REPORT *report )
+    {
+        PTR_INTO_ptrDLIST_OF< MODEL > modelPtr;
+        MODEL *mdl;
+        MDL_STATE *state;
+        int numStartStates;
+        int i;
+
+        this->installChild(
+                    new MDL_FALARM_T_HYPO<CORNER>( this->m_mdlMht, report ) );
+
+        LOOP_DLIST( modelPtr, this->m_mdlMht->m_modelList )
+        {
+            mdl = modelPtr.get();
+
+            numStartStates = mdl->beginNewStates( 0, report );
+
+            for( i = 0; i < numStartStates; i++ )
+            {
+                state = mdl->getNewState( i, 0, report );
+                if( state != 0 )
+                    this->installChild( new MDL_START_T_HYPO<CORNER>( this->m_mdlMht,
+                                                                state,
+                                                                report ) );
+            }
+
+            mdl->endNewStates();
+        }
+    }
 
 public:
 
     virtual void print()
     {
-        std::cout<<"T:"<<getTrackStamp()<<"("<<(void *)this<<")"<<"(root:"<<m_logLikelihood<<")";
+        std::cout<<"T:"
+                << this->getTrackStamp()
+                << "("<<(void *)this<<")"
+                << "(root:"
+                << this->m_logLikelihood<<")";
     }
 };
 
-class MDL_DUMMY_T_HYPO: public MDL_T_HYPO
+template<class CORNER>
+class MDL_DUMMY_T_HYPO: public MDL_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_DUMMY_T_HYPO( MDL_MHT *mdlMht, MDL_REPORT *report ):
-        MDL_T_HYPO( mdlMht, report )
+    MDL_DUMMY_T_HYPO( MDL_MHT<CORNER> *mdlMht, MDL_REPORT *report ):
+        MDL_T_HYPO<CORNER>( mdlMht, report )
     {
     }
 
-    MDL_DUMMY_T_HYPO( MDL_MHT *mdlMht, double logLikelihood = 0 ):
-        MDL_T_HYPO( mdlMht )
+    MDL_DUMMY_T_HYPO( MDL_MHT<CORNER> *mdlMht, double logLikelihood = 0 ):
+        MDL_T_HYPO<CORNER>( mdlMht )
     {
-        m_endsTrack = 1;
-        m_mustVerify = 0;
-        m_logLikelihood = logLikelihood;
+        this->m_endsTrack = 1;
+        this->m_mustVerify = 0;
+        this->m_logLikelihood = logLikelihood;
     }
 
     virtual ~MDL_DUMMY_T_HYPO() {}
 
-    virtual void makeDefaultChildren();
+    /*-------------------------------------------------------------------*
+     | MDL_DUMMY_T_HYPO::makeDefaultChildren() -- make default children
+     |                                            for a DUMMY node
+     |
+     | This makes the children that are not linked to a report.
+     *-------------------------------------------------------------------*/
+    virtual void makeDefaultChildren()
+    {
+        this->installChild( new MDL_DUMMY_T_HYPO<CORNER>(
+                          this->m_mdlMht,
+                          this->m_logLikelihood ) );
+    }
 
 public:
 
     virtual void print()
     {
-        std::cout<<"T:"<<getTrackStamp()<<"("<<(void *)this<<")"<<"(dummy:"<<m_logLikelihood<<")";
+        std::cout
+
+                << "T:" << this->getTrackStamp()
+                << "(" << (void *)this << ")"
+                << "(dummy:" << this->m_logLikelihood << ")";
     }
 };
 
-class MDL_FALARM_T_HYPO: public MDL_DUMMY_T_HYPO
+template<class CORNER>
+class MDL_FALARM_T_HYPO: public MDL_DUMMY_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_FALARM_T_HYPO( MDL_MHT *mdlMht, MDL_REPORT *report ):
-        MDL_DUMMY_T_HYPO( mdlMht, report )
+    MDL_FALARM_T_HYPO( MDL_MHT<CORNER> *mdlMht, MDL_REPORT *report ):
+        MDL_DUMMY_T_HYPO<CORNER>( mdlMht, report )
     {
-        m_endsTrack = 1;
-        m_mustVerify = 1;
-        m_logLikelihood = report->getFalarmLogLikelihood();
+        this->m_endsTrack = 1;
+        this->m_mustVerify = 1;
+        this->m_logLikelihood = report->getFalarmLogLikelihood();
 //      cout << "FalseAlarm of likelihood = " << m_logLikelihood<<endl;
     }
 
     virtual void verify()
     {
-        m_mdlMht->falseAlarm( getTimeStamp(),
-                              (MDL_REPORT *)getReport() );
+        this->m_mdlMht->falseAlarm(
+                    this->getTimeStamp(),
+                    (MDL_REPORT *)this->getReport() );
     }
 
 public:
@@ -728,20 +840,22 @@ public:
     virtual void print()
     {
         std::cout << "T:[";
-        getReport()->print();
-        std::cout << "](falarm:"<<m_logLikelihood<<")";
+        this->getReport()->print();
+        std::cout << "](falarm:"
+                  <<this->m_logLikelihood<<")";
     }
 };
 
-class MDL_CONTINUE_T_HYPO: public MDL_T_HYPO
+template<class CORNER>
+class MDL_CONTINUE_T_HYPO: public MDL_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
@@ -749,29 +863,29 @@ protected:
 
 protected:
 
-    MDL_CONTINUE_T_HYPO( MDL_MHT *mdlMht ):
-        MDL_T_HYPO( mdlMht ),
+    MDL_CONTINUE_T_HYPO( MDL_MHT<CORNER> *mdlMht ):
+        MDL_T_HYPO<CORNER>( mdlMht ),
         m_state( 0 )
     {
     }
 
-    MDL_CONTINUE_T_HYPO( MDL_MHT *mdlMht, MDL_REPORT *report ):
-        MDL_T_HYPO( mdlMht, report ),
+    MDL_CONTINUE_T_HYPO( MDL_MHT<CORNER> *mdlMht, MDL_REPORT *report ):
+        MDL_T_HYPO<CORNER>( mdlMht, report ),
         m_state( 0 )
     {
     }
 
-    MDL_CONTINUE_T_HYPO( MDL_MHT *mdlMht,
+    MDL_CONTINUE_T_HYPO( MDL_MHT<CORNER> *mdlMht,
                          double trackLogLikelihood,
                          double continueLogLikelihood,
                          double detectLogLikelihood,
                          MDL_STATE *state, MDL_REPORT *report ):
-        MDL_T_HYPO( mdlMht, report ),
+        MDL_T_HYPO<CORNER>( mdlMht, report ),
         m_state( state )
     {
-        m_endsTrack = 0;
-        m_mustVerify = 1;
-        m_logLikelihood = trackLogLikelihood +
+        this->m_endsTrack = 0;
+        this->m_mustVerify = 1;
+        this->m_logLikelihood = trackLogLikelihood +
                           continueLogLikelihood +
                           detectLogLikelihood +
                           m_state->getLogLikelihood();
@@ -782,12 +896,93 @@ protected:
         delete m_state;
     }
 
-    virtual void makeDefaultChildren();
-    virtual void makeChildrenFor( MDL_REPORT *report );
+    /*-------------------------------------------------------------------*
+     | MDL_CONTINUE_T_HYPO::makeDefaultChildren() -- make default
+     |                                               children for a
+     |                                               CONTINUE node
+     |
+     | This makes the children that are not linked to a report.
+     *-------------------------------------------------------------------*/
+    virtual void makeDefaultChildren()
+    {
+        MODEL *mdl = m_state->getMdl();
+        double endLogLikelihood = mdl->getEndLogLikelihood( m_state );
+        double continueLogLikelihood =
+                mdl->getContinueLogLikelihood( m_state );
+        double skipLogLikelihood =
+                mdl->getSkipLogLikelihood( m_state );
+        MDL_STATE *state;
+        int numNewStates;
+        int i;
+
+        if( endLogLikelihood != -INFINITY )
+            this->installChild( new MDL_END_T_HYPO<CORNER>(
+                              this->m_mdlMht,
+                              this->m_logLikelihood,
+                              skipLogLikelihood,
+                              endLogLikelihood ) );
+
+        if( continueLogLikelihood != -INFINITY )
+        {
+            numNewStates = mdl->beginNewStates( m_state, 0 );
+
+            for( i = 0; i < numNewStates; i++ )
+            {
+                state = mdl->getNewState( i, m_state, 0 );
+                if( state != 0 )
+                    this->installChild( new MDL_SKIP_T_HYPO<CORNER>(
+                                      this->m_mdlMht,
+                                      this->m_logLikelihood,
+                                      continueLogLikelihood,
+                                      skipLogLikelihood,
+                                      state ) );
+            }
+
+            mdl->endNewStates();
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MDL_CONTINUE_T_HYPO::makeChildrenFor() -- make children for a
+     |                                           CONTINUE node
+     |
+     | This makes the children that ARE linked to a report.
+     *-------------------------------------------------------------------*/
+    virtual void makeChildrenFor( MDL_REPORT *report )
+    {
+
+        MODEL *mdl = this->m_state->getMdl();
+        double continueLogLikelihood =
+                mdl->getContinueLogLikelihood( m_state );
+        double detectLogLikelihood =
+                mdl->getDetectLogLikelihood( m_state );
+        MDL_STATE *state;
+        int numNewStates;
+        int i;
+
+        numNewStates = mdl->beginNewStates( m_state, report );
+
+        for( i = 0; i < numNewStates; i++ )
+        {
+            state = mdl->getNewState( i, m_state, report );
+            if( state != 0 )
+                this->installChild( new MDL_CONTINUE_T_HYPO<CORNER>(
+                                  this->m_mdlMht,
+                                  this->m_logLikelihood,
+                                  continueLogLikelihood,
+                                  detectLogLikelihood,
+                                  state, report ) );
+        }
+
+        mdl->endNewStates();
+    }
     virtual void verify()
     {
-        m_mdlMht->continueTrack( getTrackStamp(), getTimeStamp(),
-                                 m_state, (MDL_REPORT *)getReport() );
+        this->m_mdlMht->continueTrack(
+                    this->getTrackStamp(),
+                    this->getTimeStamp(),
+                    this->m_state,
+                    (MDL_REPORT *)this->getReport() );
     }
 
 public:
@@ -798,75 +993,81 @@ public:
     }
     virtual void print()
     {
-        std::cout << "T:"<<getTrackStamp()<<"[";
+        std::cout << "T:" << this->getTrackStamp()<<"[";
         getState()->print();
         std::cout << " ," ;
-        getReport()->print() ;
-        std::cout << "](continue:"<<m_logLikelihood<<")";
+        this->getReport()->print() ;
+        std::cout << "](continue:"
+                  << this->m_logLikelihood<<")";
     }
 };
 
-class MDL_START_T_HYPO: public MDL_CONTINUE_T_HYPO
+template<class CORNER>
+class MDL_START_T_HYPO: public MDL_CONTINUE_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_START_T_HYPO( MDL_MHT *mdlMht,
+    MDL_START_T_HYPO( MDL_MHT<CORNER> *mdlMht,
                       MDL_STATE *state, MDL_REPORT *report ):
-        MDL_CONTINUE_T_HYPO( mdlMht, report )
+        MDL_CONTINUE_T_HYPO<CORNER>( mdlMht, report )
     {
-        m_state = state;
-        m_endsTrack = 0;
-        m_mustVerify = 1;
-        m_logLikelihood = m_state->getLogLikelihood();
+        this->m_state = state;
+        this->m_endsTrack = 0;
+        this->m_mustVerify = 1;
+        this->m_logLikelihood = this->m_state->getLogLikelihood();
     }
 
     virtual void verify()
     {
-        m_mdlMht->startTrack( getTrackStamp(), getTimeStamp(),
-                              m_state, (MDL_REPORT *)getReport() );
+        this->m_mdlMht->startTrack(
+                    this->getTrackStamp(),
+                    this->getTimeStamp(),
+                    this->m_state,
+                    (MDL_REPORT *)this->getReport() );
     }
 
 public:
 
     virtual void print()
     {
-        std::cout << "T:"<<getTrackStamp()<<"[";
-        getReport()->print();
-        std::cout << "](start:"<<m_logLikelihood<<")";
+        std::cout << "T:"<<this->getTrackStamp()<<"[";
+        this->getReport()->print();
+        std::cout << "](start:"<<this->m_logLikelihood<<")";
     }
 };
 
-class MDL_SKIP_T_HYPO: public MDL_CONTINUE_T_HYPO
+template<class CORNER>
+class MDL_SKIP_T_HYPO: public MDL_CONTINUE_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_END_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_END_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_SKIP_T_HYPO( MDL_MHT *mdlMht,
+    MDL_SKIP_T_HYPO( MDL_MHT<CORNER> *mdlMht,
                      double trackLogLikelihood,
                      double continueLogLikelihood,
                      double skipLogLikelihood,
                      MDL_STATE *state ):
-        MDL_CONTINUE_T_HYPO( mdlMht )
+        MDL_CONTINUE_T_HYPO<CORNER>( mdlMht )
     {
-        m_state = state;
-        m_endsTrack = 0;
-        m_mustVerify = 1;
-        m_logLikelihood = trackLogLikelihood +
+        this->m_state = state;
+        this->m_endsTrack = 0;
+        this->m_mustVerify = 1;
+        this->m_logLikelihood = trackLogLikelihood +
                           continueLogLikelihood +
                           skipLogLikelihood +
                           state->getLogLikelihood();
@@ -874,54 +1075,62 @@ protected:
 
     virtual void verify()
     {
-        m_mdlMht->skipTrack( getTrackStamp(), getTimeStamp(), m_state );
+        this->m_mdlMht->skipTrack(
+                    this->getTrackStamp(),
+                    this->getTimeStamp(),
+                    this->m_state );
     }
 
 public:
 
     virtual void print()
     {
-        std::cout << "T:"<<getTrackStamp()<<"[";
-        getState()->print();
-        std::cout << "](skip:"<<m_logLikelihood<<")";
+        std::cout << "T:"<<this->getTrackStamp()<<"[";
+        this->getState()->print();
+        std::cout << "](skip:"<< this->m_logLikelihood<<")";
     }
 };
 
-class MDL_END_T_HYPO: public MDL_DUMMY_T_HYPO
+template<class CORNER>
+class MDL_END_T_HYPO: public MDL_DUMMY_T_HYPO<CORNER>
 {
-    friend class MDL_MHT;
-    friend class MDL_ROOT_T_HYPO;
-    friend class MDL_FALARM_T_HYPO;
-    friend class MDL_DUMMY_T_HYPO;
-    friend class MDL_START_T_HYPO;
-    friend class MDL_CONTINUE_T_HYPO;
-    friend class MDL_SKIP_T_HYPO;
+    friend class MDL_MHT<CORNER>;
+    friend class MDL_ROOT_T_HYPO<CORNER>;
+    friend class MDL_FALARM_T_HYPO<CORNER>;
+    friend class MDL_DUMMY_T_HYPO<CORNER>;
+    friend class MDL_START_T_HYPO<CORNER>;
+    friend class MDL_CONTINUE_T_HYPO<CORNER>;
+    friend class MDL_SKIP_T_HYPO<CORNER>;
 
 protected:
 
-    MDL_END_T_HYPO( MDL_MHT *mdlMht,
+    MDL_END_T_HYPO( MDL_MHT<CORNER> *mdlMht,
                     double trackLogLikelihood,
                     double skipLogLikelihood,
                     double endLogLikelihood ):
-        MDL_DUMMY_T_HYPO( mdlMht )
+        MDL_DUMMY_T_HYPO<CORNER>( mdlMht )
     {
-        m_endsTrack = 1;
-        m_mustVerify = 1;
-        m_logLikelihood = trackLogLikelihood +
+        this->m_endsTrack = 1;
+        this->m_mustVerify = 1;
+        this->m_logLikelihood = trackLogLikelihood +
                           skipLogLikelihood +
                           endLogLikelihood;
     }
 
     virtual void verify()
     {
-        m_mdlMht->endTrack( getTrackStamp(), getTimeStamp() );
+        this->m_mdlMht->endTrack( this->getTrackStamp(), this->getTimeStamp() );
     }
 
 public:
 
     virtual void print()
     {
-        std::cout << "T: " << getTrackStamp() << "( "<<(void *)this << ")"<<"(end:"<<m_logLikelihood<<")";
+        std::cout << "T: "
+                  << this->getTrackStamp()
+                  << "( "<<(void *)this
+                  << ")"<<"(end:"
+                  << this->m_logLikelihood<<")";
     }
 };
 

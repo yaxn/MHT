@@ -1,5 +1,5 @@
 
-/*********************************************************************
+/*!
  * FILE: mht.H                                                       *
  *                                                                   *
  * AUTHOR: Matthew Miller (mlm)                                      *
@@ -272,7 +272,7 @@
  *       This is a doubly-linked list (see "list.H") of the          *
  *       REPORTS that have been installed since the end of the last  *
  *       call to scan().  (See installReport(), below.)              *
- *                                                                   *
+ *                               inline                                    *
  *     ptrDLIST_OF< T_HYPO > m_activeTHypoList                       *
  *                                                                   *
  *       This is a doubly-linked list (see "list.H") of all the      *
@@ -441,7 +441,7 @@
  *                     fax:  609 951 2482                            *
  *                     email:  ingemar@research.nj.nec.com (Inet)    *
  *                                                                   *
- *********************************************************************/
+ */
 
 #ifndef MHT_H
 #define MHT_H
@@ -478,7 +478,8 @@ class T_HYPO;
 class G_HYPO;
 class T_TREE;
 class GROUP;
-class MHT;
+
+template<class> class MHT;
 
 /*-------------------------------------------------------------------*
  | REPORT -- base class for measurement reports
@@ -488,7 +489,8 @@ class REPORT: public DLISTnode
 {
     friend class T_HYPO;
     friend class G_HYPO;
-    friend class MHT;
+    friend class T_TREE;
+    template<class> friend class MHT;
 
 protected:
     MEMBERS_FOR_DLISTnode( REPORT )
@@ -560,7 +562,7 @@ class T_HYPO: public TREEnode
     friend class REPORT;
     friend class G_HYPO;
     friend class T_TREE;
-    friend class MHT;
+    template<class> friend class MHT;
 
 protected:
     MEMBERS_FOR_TREEnode( T_HYPO )
@@ -590,9 +592,10 @@ protected:
         m_reportLink(),
         m_gHypoLinks(),
         m_flag( 0 ),
-        m_logLikelihood( DOUBLE_NOT_READY ),
         m_endsTrack( 0 ),
-        m_mustVerify( 0 )
+        m_mustVerify( 0 ),
+        m_logLikelihood( DOUBLE_NOT_READY )
+
     {
     }
 
@@ -603,9 +606,9 @@ protected:
         m_reportLink(),
         m_gHypoLinks(),
         m_flag( 0 ),
-        m_logLikelihood( DOUBLE_NOT_READY ),
         m_endsTrack( 0 ),
-        m_mustVerify( 0 )
+        m_mustVerify( 0 ),
+        m_logLikelihood( DOUBLE_NOT_READY )
     {
         MAKE_LINK( this, m_reportLink,
                    report, m_tHypoLinks );
@@ -722,7 +725,7 @@ class G_HYPO: public DLISTnode
     friend class REPORT;
     friend class T_HYPO;
     friend class GROUP;
-    friend class MHT;
+    template<class> friend class MHT;
 
 protected:
     MEMBERS_FOR_DLISTnode( G_HYPO )
@@ -826,7 +829,11 @@ public:
 
 class T_TREE: public DLISTnode
 {
-    friend class MHT;
+    friend class GROUP;
+    friend class T_HYPO;
+    friend class REPORT;
+    template<class> friend class MHT;
+
 
 protected:
     MEMBERS_FOR_DLISTnode( T_TREE )
@@ -848,8 +855,6 @@ private:
         m_tree.insertRoot( root );
         root->setStamps( this, time );
     }
-
-public:
 
     iTREE_OF< T_HYPO > *getTree()
     {
@@ -938,16 +943,9 @@ public:
  | MHT -- multiple hypothesis tracker
  *-------------------------------------------------------------------*/
 
+template<class CORNER>
 class MHT
 {
-private:
-
-    int m_dbgEndA;
-    int m_dbgStartB;
-    int m_dbgEndB;
-    int m_dbgStartC;
-    int m_dbgEndC;
-
 protected:
 
     int m_lastTrackIdUsed;
@@ -965,8 +963,16 @@ protected:
     int m_dbgStartA;
     iDLIST_OF< REPORT > m_newReportList;
     ptrDLIST_OF< T_HYPO > m_activeTHypoList;
-    std::queue<CORNERLIST> m_reportsQueue;
+    std::queue<CORNERLIST< CORNER > > m_reportsQueue;
     bool m_isFirstScan;
+
+private:
+
+    int m_dbgEndA;
+    int m_dbgStartB;
+    int m_dbgEndB;
+    int m_dbgStartC;
+    int m_dbgEndC;
 
 protected:
 
@@ -980,16 +986,17 @@ protected:
         m_nextNewTTree( m_tTreeList ),
         m_groupList(),
         m_oldReportList(),
+        m_dbgStartA( 0x7FFFFFFF ),
         m_newReportList(),
         m_activeTHypoList(),
         m_reportsQueue(),
         m_isFirstScan(true),
-        m_dbgStartA( 0x7FFFFFFF ),
         m_dbgEndA( 0x7FFFFFFF ),
         m_dbgStartB( 0x7FFFFFFF ),
         m_dbgEndB( 0x7FFFFFFF ),
         m_dbgStartC( 0x7FFFFFFF ),
         m_dbgEndC( 0x7FFFFFFF )
+
     {
     }
 
@@ -1016,7 +1023,8 @@ protected:
 
 protected:
 
-    virtual void measureAndValidate(const std::list<CORNER> &newReports)
+    virtual void measureAndValidate(const std::list<CORNER> & /*newReports*/,
+                                    const double &/*deltaT*/)
     {
         assert(false);
     }//THROW_ERR( "Call to MHT::measureAndValidate()" ) }
@@ -1032,34 +1040,507 @@ public:
         return m_currentTime;
     }
 
-    void addReports(const CORNERLIST &newReport);
-    int scan();
-    void clear();
+
+    /** @brief MHT::addReports() -- push another set of reports
+      * to the internal queue.
+      *
+      * The Internal MHT queue helps to allow for asynchronous running of
+      * MHT in a variety of use cases.  One could load up all the reports
+      * at once and then do all the scans, or one could load up reports
+      * as they become available and call scan on a regular interval,
+      * or some other real-time processing paradigm.
+      */
+    void addReports(const CORNERLIST<CORNER> &newReports)
+    {
+        m_reportsQueue.push(newReports);
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::scan() -- do an iteration of the mht algorithm
+     *-------------------------------------------------------------------*/
+    int scan()
+    {
+        if (m_reportsQueue.empty())
+        {
+            return 0;
+        }
+
+        const CORNERLIST<CORNER> newReports = m_reportsQueue.front();
+        m_reportsQueue.pop();
+
+        measureAndValidate(newReports.list, newReports.m_dT);
+        m_currentTime++;
+
+        if( m_dbgStartA <= m_currentTime && m_currentTime < m_dbgEndA )
+        {
+            doDbgA();
+        }
+
+        m_activeTHypoList.removeAll();
+        importNewReports();
+
+        if( m_tTreeList.isEmpty() )
+        {
+            return 0;
+        }
+
+        makeNewGroups();
+        findGroupLabels();
+        splitGroups();
+        mergeGroups();
+
+        if( m_dbgStartB <= m_currentTime && m_currentTime < m_dbgEndB )
+        {
+            doDbgB();
+        }
+
+        pruneAndHypothesize();
+        removeUnusedTHypos();
+        verifyTTreeRoots();
+
+        removeUnusedTTrees();
+        removeUnusedReports();
+        removeUnusedGroups();
+
+        updateActiveTHypoList();
+
+        if( m_dbgStartC <= m_currentTime && m_currentTime < m_dbgEndC )
+        {
+            doDbgC();
+        }
+
+        m_isFirstScan = false;
+        return 1;
+    }
+
+    void clear()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+        for (int i=m_maxDepth; i>=0; i--)
+        {
+            LOOP_DLIST( groupPtr, m_groupList )
+            {
+                (*groupPtr).clear( i);
+            }
+            verifyTTreeRoots();
+            removeUnusedTTrees();
+            removeUnusedReports();
+            removeUnusedGroups();
+        }
+        verifyLastTTreeRoots();
+    }
 
 private:
 
-    void importNewReports();
+    /*-------------------------------------------------------------------*
+     | MHT::importNewReports() -- set up to deal with new REPORTs
+     |
+     | This assigns a row number to each new REPORT, for use in making
+     | assignment problems later on, and moves all the REPORTs from the
+     | new report list to the old report list.
+     *-------------------------------------------------------------------*/
+    void importNewReports()
+    {
+        PTR_INTO_iDLIST_OF< REPORT > reportPtr;
+        int rowNum;
 
-    void makeNewGroups();
-    void findGroupLabels();
-    void splitGroups();
-    void mergeGroups();
+        rowNum = 0;
+        LOOP_DLIST( reportPtr, this->m_newReportList )
+        {
+            (*reportPtr).setRowNum( rowNum++ );
+        }
 
-    void pruneAndHypothesize();
-    void removeUnusedTHypos();
-    void verifyTTreeRoots();
-    void verifyLastTTreeRoots();
+        m_oldReportList.splice( m_newReportList );
+    }
 
-    void removeUnusedTTrees();
-    void removeUnusedReports();
-    void removeUnusedGroups();
+    /*-------------------------------------------------------------------*
+     | MHT::makeNewGroups() -- make a new GROUP for each new track tree
+     *-------------------------------------------------------------------*/
+    void makeNewGroups()
+    {
+        for( ; m_nextNewTTree.isValid(); ++m_nextNewTTree )
+        {
+            this->m_groupList.append( new GROUP( m_nextNewTTree.get() ) );
+        }
+    }
 
-    void updateActiveTHypoList();
+    /*-------------------------------------------------------------------*
+     | MHT::findGroupLabels() -- label track trees and REPORTs for
+     |                           grouping
+     |
+     | This is the first step in splitting and merging GROUPs.  Here, we
+     | find out which GROUP each T_TREE and REPORT should be in.  The
+     | algorithm for doing this is derived from the one described in
+     |
+     |   T. Kurien
+     |   Issues in the Design of Practical Multitarget Tracking
+     |   Algorithms
+     |   in Yaakov Bar-Shalom, Ed.
+     |   Multitarget-Multisensor Tracking
+     |
+     | My (derived) algorithm proceeds in three steps:
+     |
+     | 1. All the T_TREE groupId members are initialized to -1, which
+     |    indicates they haven't been grouped yet.
+     |
+     | 2. We loop through the list of all the old REPORTs, assigning each
+     |    a group id by means of the member function setAllGroupIds().
+     |    This function also gives the group id to all the T_TREEs that
+     |    refer to the REPORT.  If a T_TREE has already been given a
+     |    group id by a previous REPORT, then that report is also given
+     |    the new id.
+     |
+     | 3. After step 2, all the T_TREEs that refer to any REPORT have
+     |    been given group id's.  But there might be a few T_TREEs that
+     |    don't refer to any REPORTs at all.  The last step is to give
+     |    each of these T_TREEs a unique group id (since each of them can
+     |    be in a GROUP by itself).
+     *-------------------------------------------------------------------*/
+    void findGroupLabels()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        PTR_INTO_iDLIST_OF< REPORT > reportPtr;
+        int groupId;
 
-    void checkGroups();
-    void doDbgA();
-    void doDbgB();
-    void doDbgC();
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            (*tTreePtr).setGroupId( -1 );
+        }
+
+        groupId = 1;
+
+        LOOP_DLIST( reportPtr, this->m_oldReportList )
+        {
+            (*reportPtr).setAllGroupIds( groupId++ );
+        }
+
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            if( (*tTreePtr).getGroupId() == -1 )
+            {
+                (*tTreePtr).setGroupId( groupId++ );
+            }
+        }
+
+#ifdef TSTBUG
+        assert( m_newReportList.isEmpty() );
+        //  THROW_ERR( "m_newReportList must be empty in findGroupLabels()" )
+#endif
+
+#ifdef DEBUG
+        LOOP_DLIST( reportPtr, m_oldReportList )
+        {
+            (*reportPtr).checkGroupIds();
+        }
+#endif
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::splitGroups() -- split GROUPs that can split
+     |
+     | The hard part of this is handled in GROUP::splitIfYouMust().
+     *-------------------------------------------------------------------*/
+    void splitGroups()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+
+        LOOP_DLIST( groupPtr, this->m_groupList )
+        {
+            (*groupPtr).splitIfYouMust();
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::mergeGroups() -- merge GROUPs that must merge
+     |
+     | Two GROUPs must merge if they both contain T_TREEs with the same
+     | group id.  This routine simply goes through the list of GROUPs
+     | from head to tail, and, for each GROUP, searches the rest of the
+     | list for a GROUP with the same group id.  When it finds one, it
+     | merges the two GROUPs, removes the one it found, and continues
+     | searching.
+     *-------------------------------------------------------------------*/
+    void mergeGroups()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr0;
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr1;
+        int groupId;
+
+        LOOP_DLIST( groupPtr0, this->m_groupList )
+        {
+            groupId = (*groupPtr0).getGroupId();
+
+            for( groupPtr1 = groupPtr0, ++groupPtr1;
+                 groupPtr1.isValid();
+                 ++groupPtr1 )
+                if( (*groupPtr1).getGroupId() == groupId )
+                {
+                    (*groupPtr0).merge( groupPtr1.get(),
+                                        m_logMinGHypoRatio,
+                                        m_maxGHypos );
+                    groupPtr1.remove();
+                }
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::pruneAndHypothesize() -- prune track trees and create new
+     |                               G_HYPOs for each GROUP
+     *-------------------------------------------------------------------*/
+    void pruneAndHypothesize()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+
+        LOOP_DLIST( groupPtr, this->m_groupList )
+        {
+            (*groupPtr).pruneAndHypothesize( this->m_maxDepth,
+                                             this->m_logMinGHypoRatio,
+                                             this->m_maxGHypos );
+        }
+    }
+
+
+    /*-------------------------------------------------------------------*
+     | MHT::removeUnusedTHypos() -- remove the T_HYPOs that are not
+     |                              referred to in any G_HYPO, or have
+     |                              had all their children removed
+     *-------------------------------------------------------------------*/
+    void removeUnusedTHypos()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        PTR_INTO_iTREE_OF< T_HYPO > tHypoPtr;
+
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            LOOP_TREEpostOrder( tHypoPtr, *(*tTreePtr).getTree() )
+            {
+                if( ! (*tHypoPtr).isInUse() )
+                {
+                    tHypoPtr.removeSubtree();
+                }
+            }
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::verifyTTreeRoots() -- verify and remove track tree roots that
+     |                            have only one child
+     *-------------------------------------------------------------------*/
+    void verifyTTreeRoots()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        iTREE_OF< T_HYPO > *tTree;
+        T_HYPO *root;
+
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            tTree = (*tTreePtr).getTree();
+
+            if( ! tTree->isEmpty() )
+            {
+                root = tTree->getRoot();
+                while( root->hasOneChild() && ! root->endsTrack() )
+                {
+                    if( root->mustVerify() )
+                    {
+                        root->verify();
+                    }
+                    tTree->removeRoot();
+
+                    root = tTree->getRoot();
+                }
+
+                if( root->endsTrack() && root->mustVerify() )
+                {
+                    root->verify();
+                }
+            }
+        }
+    }
+
+    void verifyLastTTreeRoots()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        iTREE_OF< T_HYPO > *tTree;
+        T_HYPO *root;
+
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            tTree = (*tTreePtr).getTree();
+
+            if( ! tTree->isEmpty() )
+            {
+                root = tTree->getRoot();
+                if( root)
+                {
+                    if( root->mustVerify() )
+                    {
+                        root->verify();
+                    }
+                    tTree->removeRoot();
+                }
+
+            }
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::removeUnusedTTrees() -- remove track trees that aren't needed
+     |
+     | A track tree should be removed if either of the following is true:
+     |
+     | 1. It's root node ends the tree (since the root node has been
+     |    identified as true, so the tree is done).
+     |
+     | 2. All possible paths from the root lead to nodes that end the
+     |    tree, and contain no nodes that must be verified (basically,
+     |    the tree isn't really done yet, but the application doesn't
+     |    care what happens with it, so it can be discarded).
+     *-------------------------------------------------------------------*/
+    void removeUnusedTTrees()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        iTREE_OF< T_HYPO > *tTree;
+        PTR_INTO_iTREE_OF< T_HYPO > tHypoPtr;
+        int treeIsInUse;
+
+        LOOP_DLIST( tTreePtr, m_tTreeList )
+        {
+            tTree = (*tTreePtr).getTree();
+            treeIsInUse = 0;
+
+            if( ! tTree->isEmpty() &&
+                    ! tTree->getRoot()->endsTrack() )
+                LOOP_TREE( tHypoPtr, *tTree )
+                {
+                    if( (*tHypoPtr).mustVerify() ||
+                            (tHypoPtr.isAtLeaf() && ! (*tHypoPtr).endsTrack()) )
+                    {
+                        treeIsInUse = 1;
+                        break;
+                    }
+                }
+
+                    if( ! treeIsInUse )
+                    {
+                        tTreePtr.remove();
+                    }
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::removeUnusedReports() -- remove REPORTs that aren't used by
+     |                               any T_HYPOs
+     *-------------------------------------------------------------------*/
+    void removeUnusedReports()
+    {
+        PTR_INTO_iDLIST_OF< REPORT > reportPtr;
+
+        LOOP_DLIST( reportPtr, this->m_oldReportList )
+                if( ! (*reportPtr).isInUse() )
+        {
+            reportPtr.remove();
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::removeUnusedGroups() -- remove GROUPs that have no track
+     |                              trees left in them
+     *-------------------------------------------------------------------*/
+    void removeUnusedGroups()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+
+        LOOP_DLIST( groupPtr, this->m_groupList )
+                if( ! (*groupPtr).isInUse() )
+        {
+            groupPtr.remove();
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::updateActiveTHypoList() -- build the list of T_HYPOs that are
+     |                                 leaves of track trees
+     *-------------------------------------------------------------------*/
+    void updateActiveTHypoList()
+    {
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        PTR_INTO_iTREE_OF< T_HYPO > tHypoPtr;
+
+        LOOP_DLIST( tTreePtr, this->m_tTreeList )
+        {
+            LOOP_TREE( tHypoPtr, *(*tTreePtr).getTree() )
+            {
+                if( tHypoPtr.isAtLeaf() )
+                {
+                    m_activeTHypoList.append( *tHypoPtr );
+                }
+            }
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::checkGroups() -- test that groups are correct (for debugging)
+     *-------------------------------------------------------------------*/
+    void checkGroups()
+    {
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr0;
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr1;
+        int groupId;
+
+        LOOP_DLIST( groupPtr0, this->m_groupList )
+        {
+            (*groupPtr0).check();
+        }
+
+        LOOP_DLIST( groupPtr0, this->m_groupList )
+        {
+            groupId = (*groupPtr0).getGroupId();
+
+            for( (groupPtr1 = groupPtr0),++groupPtr1; groupPtr1.isValid(); ++groupPtr1)
+            {
+                assert( (*groupPtr1).getGroupId() != groupId );
+            }
+            //  THROW_ERR( "Two groups with same id" )
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | Debugging routines
+     *-------------------------------------------------------------------*/
+    void doDbgA()
+    {
+        std::cout << std::endl;
+        std::cout << "  ************************** MHT after measureAndValidate()"
+                  << std::endl;
+
+        describe( 4 );
+
+        std::cout << "  HIT RETURN..." << std::endl;
+        //getchar();
+    }
+    void doDbgB()
+    {
+        std::cout << std::endl;
+        std::cout << "  ******************************* MHT after group formation"
+                  << std::endl;
+
+        describe( 4 );
+
+        std::cout << "  HIT RETURN..." << std::endl;
+        //getchar();
+    }
+    void doDbgC()
+    {
+        std::cout << std::endl;
+        std::cout << "  *************************************** MHT after pruning"
+                  << std::endl;
+
+        describe( 4 );
+
+        std::cout << "  HIT RETURN..." << std::endl;
+        //getchar();
+    }
 
 public:
 
@@ -1067,9 +1548,144 @@ public:
     {
         std::cout << "M:" << (void *)this;
     }
-    virtual void describe( int spaces = 0 );
 
-    virtual void printStats( int spaces = 0 );
+    /*-------------------------------------------------------------------*
+     | MHT::describe() -- verbose diagnostic
+     *-------------------------------------------------------------------*/
+    virtual void describe( int spaces = 0 )
+    {
+        PTR_INTO_ptrDLIST_OF< T_HYPO > tHypoPtr;
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+        PTR_INTO_iDLIST_OF< REPORT > reportPtr;
+        PTR_INTO_iDLIST_OF< T_TREE > tTreePtr;
+        int k;
+
+        Indent( spaces );
+        std::cout << "MHT ";
+        print();
+        std::cout << std::endl;
+        spaces += 2;
+
+        Indent( spaces );
+        std::cout << "lastTrackUsed = " << m_lastTrackIdUsed;
+        std::cout << ", time = " << m_currentTime;
+        std::cout << std::endl;
+
+        Indent( spaces );
+        std::cout << "maxDepth = " << m_maxDepth;
+        std::cout << ", logMinRatio = " << m_logMinGHypoRatio;
+        std::cout << ", maxGHypos = " << m_maxGHypos;
+        std::cout << std::endl;
+
+        Indent( spaces );
+        std::cout << "active tHypo's:";
+        k = 0;
+
+        LOOP_DLIST( tHypoPtr, m_activeTHypoList )
+        {
+            if( k++ >= 3 )
+            {
+                std::cout << std::endl;
+                Indent( spaces );
+                std::cout << "               ";
+                k = 0;
+            }
+
+            std::cout << " ";
+            (*tHypoPtr).print();
+        }
+        std::cout << std::endl;
+
+        Indent( spaces );
+        std::cout << "===== clusters";
+        std::cout << std::endl;
+        LOOP_DLIST( groupPtr, m_groupList )
+        {
+            (*groupPtr).describe( spaces + 2 );
+        }
+
+        Indent( spaces );
+        std::cout << "===== oldReports";
+        std::cout << std::endl;
+        LOOP_DLIST( reportPtr, m_oldReportList )
+        {
+            (*reportPtr).describe( spaces + 2 );
+        }
+
+        Indent( spaces );
+        std::cout << "===== newReports";
+        std::cout << std::endl;
+        LOOP_DLIST( reportPtr, m_newReportList )
+        {
+            (*reportPtr).describe( spaces + 2 );
+        }
+
+        Indent( spaces );
+        std::cout << "===== oldTrees";
+        std::cout << std::endl;
+        LOOP_DLIST( tTreePtr, m_tTreeList )
+        {
+            if( tTreePtr == m_nextNewTTree )
+            {
+                Indent( spaces );
+                std::cout << "===== newTrees";
+                std::cout << std::endl;
+            }
+
+            std::cout << std::endl;
+            (**(*tTreePtr).getTree()).describeTree( spaces + 2 );
+        }
+    }
+
+    /*-------------------------------------------------------------------*
+     | MHT::printStats() -- print out some information about the progress
+     |                      of the mht
+     *-------------------------------------------------------------------*/
+    virtual void printStats( int spaces = 0 )
+    {
+        int totalTTrees = m_tTreeList.getLength();
+        int totalTHypos = m_activeTHypoList.getLength();
+        int totalGroups = m_groupList.getLength();
+        int totalGHypos;
+        int maxGHypos;
+        int numGHypos;
+        PTR_INTO_iDLIST_OF< GROUP > groupPtr;
+
+        totalGHypos = 0;
+        maxGHypos = 0;
+        LOOP_DLIST( groupPtr, m_groupList )
+        {
+            numGHypos = (*groupPtr).getNumGHypos();
+
+            totalGHypos += numGHypos;
+            if( maxGHypos < numGHypos )
+            {
+                maxGHypos = numGHypos;
+            }
+        }
+
+        Indent( spaces );
+        std::cout << "track trees ---------------- "
+                  << totalTTrees << std::endl;
+        Indent( spaces );
+        std::cout << "  track hypos:          "
+                  << totalTHypos << std::endl;
+        Indent( spaces );
+        std::cout << "  hypos per tree:       "
+                  << (double)totalTHypos / totalTTrees << std::endl;
+        Indent( spaces );
+        std::cout << "groups --------------------- "
+                  << totalGroups << std::endl;
+        Indent( spaces );
+        std::cout << "  group hypos:          "
+                  << totalGHypos << std::endl;
+        Indent( spaces );
+        std::cout << "  hypos per group:      "
+                  << (double)totalGHypos / totalGroups << std::endl;
+        Indent( spaces );
+        std::cout << "  max hypos in a group: "
+                  << maxGHypos << std::endl;
+    }
 
     void setDbgA( int start = 0x7FFFFFFF, int end = 0x7FFFFFFF )
     {

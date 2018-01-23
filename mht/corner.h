@@ -68,7 +68,7 @@ public:
     }
 };
 
-class CORNER:public DLISTnode
+class CORNERXY:public DLISTnode
 {
 public:
     double x,y;
@@ -76,7 +76,7 @@ public:
     int m_frameNo;
     size_t m_cornerID;
 
-    CORNER(const double &a, const double &b, const Texture_t &info, const int &f,const size_t &cornerID):
+    CORNERXY(const double &a, const double &b, const Texture_t &info, const int &f,const size_t &cornerID):
         DLISTnode(),
         x(a),y(b),
         m_textureInfo(info),
@@ -86,26 +86,34 @@ public:
     }
 
 protected:
-    MEMBERS_FOR_DLISTnode(CORNER)
+    MEMBERS_FOR_DLISTnode(CORNERXY)
 
 };
 
 
-class CORNERLIST: public DLISTnode
+template<class T = CORNERXY>
+class CORNERLIST
 {
 public:
     int ncorners;
-    std::list<CORNER> list;
-    float m_dT;
-    CORNERLIST(int npts, float deltaT=1.0):
-        ncorners(npts), list(), m_dT(deltaT), DLISTnode()
+    std::list<T> list;
+    double m_dT;
+    CORNERLIST(int npts = 0, float deltaT=1.0):
+        ncorners(npts),
+        list(),
+        m_dT(deltaT)
+
     {
     }
 
-protected:
-    MEMBERS_FOR_DLISTnode(CORNERLIST)
-};
+    void add(const T& c) {
+        list.push_back(c);
+        ncorners = list.size();
+    }
 
+    size_t size() const { return list.size(); }
+    void clearList() { list.clear(); }
+};
 
 
 #endif
